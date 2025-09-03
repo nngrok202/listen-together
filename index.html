@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Audio Player</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FINAL CRITICAL FIX: Corrected typo 'xintegrity' to 'integrity' -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" xintegrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        /* Marquee animation for scrolling long text */
+        .marquee {
+            overflow: hidden;
+            position: relative;
+        }
+        .marquee-inner {
+            display: flex;
+            width: fit-content;
+            animation: marquee-scroll 15s linear infinite;
+        }
+        .marquee-inner span {
+             white-space: nowrap;
+        }
+        @keyframes marquee-scroll {
+            from { transform: translateX(0); }
+            to { transform: translateX(-50%); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white overflow-hidden">
+    <div id="app" class="flex h-screen p-4 gap-4">
+
+        <!-- Left Sidebar (Users & Chat) -->
+        <aside class="w-1/4 bg-transparent flex flex-col flex-shrink-0 gap-4">
+            <!-- Joined Users Card -->
+            <div id="user-list-container" class="h-2/5 flex flex-col p-4 overflow-hidden bg-gray-800/50 rounded-lg">
+                <h3 class="text-lg font-bold mb-4 flex-shrink-0">Joined Users</h3>
+                <ul id="user-list" class="flex-1 space-y-3 overflow-y-auto no-scrollbar">
+                    <!-- User list items will be injected here -->
+                </ul>
+            </div>
+            
+            <!-- Chat Card -->
+            <div id="chat-container" class="h-3/5 flex flex-col p-4 overflow-hidden bg-gray-800/50 rounded-lg min-h-0">
+                 <h3 class="text-lg font-bold mb-4 flex-shrink-0">Chat</h3>
+                 <div id="chat-messages" class="flex-1 overflow-y-auto mb-4 no-scrollbar space-y-4">
+                    <!-- Chat messages will be injected here -->
+                 </div>
+                 <!-- FINAL: Send button inside input -->
+                 <div class="relative flex-shrink-0">
+                    <input id="chat-input" type="text" placeholder="Type a message..." class="w-full bg-gray-700 border-gray-600 rounded-full pl-4 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled>
+                    <button id="send-chat-btn" class="absolute inset-y-0 right-0 flex items-center justify-center w-10 text-indigo-400 hover:text-indigo-300 disabled:text-gray-500" disabled>
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="w-1/2 min-w-0 overflow-hidden">
+             <div class="h-full flex flex-col">
+                <div class="flex-shrink-0 mb-4 flex justify-between items-center">
+                    <h1 class="text-2xl font-bold">Listen Together</h1>
+                    <div id="session-display" class="hidden items-center space-x-2 bg-gray-800 p-2 rounded-lg text-sm">
+                        <span>Session: <span id="session-id-display" class="font-mono bg-gray-700 px-2 rounded"></span></span>
+                        <button id="copy-session-id" class="ml-2 text-gray-400 hover:text-white" title="Copy Code"><i class="fas fa-copy"></i></button>
+                        <button id="leave-session-btn" class="ml-2 bg-red-600 hover:bg-red-700 text-white text-xs py-1 px-3 rounded-full">Leave</button>
+                    </div>
+                    <button id="session-manage-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-full transition-all duration-300">
+                        <i class="fas fa-users mr-2"></i>Manage Session
+                    </button>
+                </div>
+
+                <!-- Player -->
+                <div class="flex-1 min-h-0 flex flex-col items-center justify-center bg-gray-800/50 rounded-2xl p-6 backdrop-blur-sm">
+                    <div id="album-art-container" class="relative w-40 h-40 md:w-48 md:h-48 mb-2 shadow-2xl rounded-lg overflow-hidden flex-shrink-0">
+                         <img id="album-art" src="https://placehold.co/300x300/1a202c/718096?text=No+Art" class="w-full h-full object-cover">
+                         <div class="absolute inset-0 bg-black/20"></div>
+                    </div>
+                    
+                    <div id="metadata-container" class="text-center text-xs text-gray-400 mb-2 space-y-1 h-8">
+                        <p id="meta-album" class="hidden truncate"></p>
+                        <p id="meta-genre-year" class="hidden"></p>
+                    </div>
+
+                    <div class="w-full max-w-md flex flex-col items-center">
+                        <div class="text-center w-full">
+                            <div class="marquee text-xl md:text-2xl font-bold">
+                                <div id="song-title" class="marquee-inner">
+                                    <span>No Song Playing&nbsp;&nbsp;&nbsp;</span>
+                                    <span>No Song Playing&nbsp;&nbsp;&nbsp;</span>
+                                </div>
+                            </div>
+                            <div class="marquee text-gray-400 text-base">
+                               <div id="song-artist" class="marquee-inner">
+                                    <span>Select songs to start&nbsp;&nbsp;&nbsp;</span>
+                                    <span>Select songs to start&nbsp;&nbsp;&nbsp;</span>
+                               </div>
+                            </div>
+                        </div>
+
+                        <!-- Progress Bar -->
+                        <div class="w-full mt-3">
+                            <div class="relative pt-1">
+                                <input type="range" id="progress-bar" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" value="0" min="0" max="100">
+                            </div>
+                            <div class="flex justify-between text-xs text-gray-400 mt-1">
+                                <span id="current-time">0:00</span>
+                                <span id="duration">0:00</span>
+                            </div>
+                        </div>
+
+                        <!-- Controls -->
+                        <div class="flex w-full items-center justify-center space-x-4 mt-3">
+                            <button id="prev-btn" class="text-gray-400 hover:text-white transition-colors"><i class="fas fa-backward-step fa-lg"></i></button>
+                            <button id="play-pause-btn" class="bg-indigo-600 w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg hover:bg-indigo-500 transition-transform transform hover:scale-110">
+                                <i id="play-pause-icon" class="fas fa-play text-lg"></i>
+                            </button>
+                            <button id="next-btn" class="text-gray-400 hover:text-white transition-colors"><i class="fas fa-forward-step fa-lg"></i></button>
+                            
+                            <div class="group relative flex items-center">
+                                <button id="volume-btn" class="text-gray-400 hover:text-white transition-colors p-2">
+                                    <i id="volume-icon" class="fas fa-volume-high"></i>
+                                </button>
+                                <div id="volume-popup" class="absolute left-full top-1/2 -translate-y-1/2 p-1 bg-gray-700 rounded-md shadow-lg hidden group-hover:flex items-center space-x-1 transition-all duration-300">
+                                    <input id="volume-slider" type="range" min="0" max="100" value="100" class="w-16 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                                    <span id="volume-percentage" class="text-xs w-8 text-center text-gray-300">100%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                     <audio id="audio-player" class="hidden"></audio>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar (Queue) -->
+        <aside class="w-1/4 bg-transparent flex flex-col p-0 flex-shrink-0">
+            <div class="h-full flex flex-col bg-gray-800/50 rounded-lg p-4">
+                <div class="flex justify-between items-center mb-4 flex-shrink-0">
+                    <h3 class="text-lg font-bold">Up Next</h3>
+                    <div class="flex items-center space-x-2">
+                         <label for="add-songs-input" class="bg-gray-700 hover:bg-gray-600 text-white py-2 px-3 rounded-md cursor-pointer text-sm">
+                             <i class="fas fa-plus"></i>
+                         </label>
+                         <input id="add-songs-input" type="file" multiple accept="audio/*" class="hidden">
+                         <button id="rescan-btn" title="Rescan for songs" class="bg-gray-700 hover:bg-gray-600 text-white py-2 px-3 rounded-md">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                <ul id="queue-list" class="space-y-2 overflow-y-auto no-scrollbar flex-1">
+                    <!-- Queue items will be injected here -->
+                </ul>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Session Start Modal -->
+    <div id="session-start-modal" class="fixed inset-0 bg-black bg-opacity-70 backdrop-blur-sm hidden items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg shadow-xl p-8 w-full max-w-sm relative">
+            <button id="close-modal-btn" class="absolute top-4 right-4 text-gray-400 hover:text-white">&times;</button>
+            <div id="initial-view">
+                <h2 class="text-2xl font-bold mb-6 text-center">Session</h2>
+                <button id="show-create-view-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-md mb-3">Create Session</button>
+                <button id="show-join-view-btn" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-md">Join Session</button>
+            </div>
+            <div id="create-view" class="hidden">
+                <h2 class="text-2xl font-bold mb-4">Create Session</h2>
+                <input id="create-name-input" type="text" placeholder="Enter Your Name" class="w-full bg-gray-700 rounded-md px-4 py-2 mb-4" maxlength="20">
+                <input id="create-code-input" type="text" placeholder="Enter a 6-Digit Code" class="w-full bg-gray-700 rounded-md px-4 py-2 mb-4" maxlength="6">
+                <button id="create-session-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md">Create</button>
+                 <p id="create-error" class="text-red-400 text-sm mt-2 h-4"></p>
+                <button class="back-btn text-gray-400 hover:text-white mt-4">&larr; Back</button>
+            </div>
+            <div id="join-view" class="hidden">
+                <h2 class="text-2xl font-bold mb-4">Join Session</h2>
+                <input id="join-name-input" type="text" placeholder="Enter Your Name" class="w-full bg-gray-700 rounded-md px-4 py-2 mb-4" maxlength="20">
+                <input id="join-code-input" type="text" placeholder="Enter 6-Digit Code" class="w-full bg-gray-700 rounded-md px-4 py-2 mb-4" maxlength="6">
+                <button id="join-session-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md">Join</button>
+                 <p id="join-error" class="text-red-400 text-sm mt-2 h-4"></p>
+                <button class="back-btn text-gray-400 hover:text-white mt-4">&larr; Back</button>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, serverTimestamp, query, orderBy, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- App State ---
+        let songs = [];
+        let currentSongIndex = 0;
+        let isPlaying = false;
+        let isHost = false;
+        let sessionId = null;
+        let userId = null;
+        let userName = null;
+        let sessionUnsubscribe = null;
+        let chatUnsubscribe = null;
+        let usersUnsubscribe = null;
+        const jsmediatags = window.jsmediatags;
+
+        // --- DOM Elements ---
+        const audioPlayer = document.getElementById('audio-player');
+        const playPauseBtn = document.getElementById('play-pause-btn');
+        const playPauseIcon = document.getElementById('play-pause-icon');
+        const nextBtn = document.getElementById('next-btn');
+        const prevBtn = document.getElementById('prev-btn');
+        const progressBar = document.getElementById('progress-bar');
+        const currentTimeEl = document.getElementById('current-time');
+        const durationEl = document.getElementById('duration');
+        const albumArt = document.getElementById('album-art');
+        const songTitle = document.getElementById('song-title');
+        const songArtist = document.getElementById('song-artist');
+        const addSongsInput = document.getElementById('add-songs-input');
+        const rescanBtn = document.getElementById('rescan-btn');
+        const queueList = document.getElementById('queue-list');
+        const sessionManageBtn = document.getElementById('session-manage-btn');
+        const sessionDisplay = document.getElementById('session-display');
+        const sessionIdDisplay = document.getElementById('session-id-display');
+        const copySessionIdBtn = document.getElementById('copy-session-id');
+        const leaveSessionBtn = document.getElementById('leave-session-btn');
+        const chatInput = document.getElementById('chat-input');
+        const sendChatBtn = document.getElementById('send-chat-btn');
+        const chatMessages = document.getElementById('chat-messages');
+        const userList = document.getElementById('user-list');
+        const volumeBtn = document.getElementById('volume-btn');
+        const volumeIcon = document.getElementById('volume-icon');
+        const volumeSlider = document.getElementById('volume-slider');
+        const volumePercentage = document.getElementById('volume-percentage');
+        const metaAlbum = document.getElementById('meta-album');
+        const metaGenreYear = document.getElementById('meta-genre-year');
+        
+        // Modal elements
+        const sessionStartModal = document.getElementById('session-start-modal');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const initialView = document.getElementById('initial-view');
+        const createView = document.getElementById('create-view');
+        const joinView = document.getElementById('join-view');
+        const showCreateViewBtn = document.getElementById('show-create-view-btn');
+        const showJoinViewBtn = document.getElementById('show-join-view-btn');
+        const backBtns = document.querySelectorAll('.back-btn');
+        const createNameInput = document.getElementById('create-name-input');
+        const createCodeInput = document.getElementById('create-code-input');
+        const createSessionBtn = document.getElementById('create-session-btn');
+        const joinNameInput = document.getElementById('join-name-input');
+        const joinCodeInput = document.getElementById('join-code-input');
+        const joinSessionBtn = document.getElementById('join-session-btn');
+        const createError = document.getElementById('create-error');
+        const joinError = document.getElementById('join-error');
+
+        // --- Firebase Auth ---
+        async function initializeAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Authentication failed:", error);
+            }
+        }
+        onAuthStateChanged(auth, (user) => { if (user) userId = user.uid; });
+
+        // --- Player & Queue Logic ---
+        function loadSong(song) {
+            const songUrl = URL.createObjectURL(song.file);
+            audioPlayer.src = songUrl;
+            
+            const titleText = song.title || 'Unknown Title';
+            songTitle.innerHTML = `<span>${titleText}&nbsp;&nbsp;&nbsp;</span><span>${titleText}&nbsp;&nbsp;&nbsp;</span>`;
+
+            const artistText = song.artist || 'Unknown Artist';
+            songArtist.innerHTML = `<span>${artistText}&nbsp;&nbsp;&nbsp;</span><span>${artistText}&nbsp;&nbsp;&nbsp;</span>`;
+
+            if (song.picture) {
+                const { data, format } = song.picture;
+                const base64String = data.reduce((acc, byte) => acc + String.fromCharCode(byte), "");
+                albumArt.src = `data:${format};base64,${window.btoa(base64String)}`;
+            } else {
+                albumArt.src = 'https://placehold.co/300x300/1a202c/718096?text=No+Art';
+            }
+
+            if (song.album) {
+                metaAlbum.textContent = `Album: ${song.album}`;
+                metaAlbum.classList.remove('hidden');
+            } else {
+                metaAlbum.classList.add('hidden');
+            }
+
+            const genre = song.genre;
+            const year = song.year;
+            let genreYearText = '';
+            if (genre) genreYearText += genre;
+            if (genre && year) genreYearText += ' • ';
+            if (year) genreYearText += year;
+
+            if (genreYearText) {
+                metaGenreYear.textContent = genreYearText;
+                metaGenreYear.classList.remove('hidden');
+            } else {
+                metaGenreYear.classList.add('hidden');
+            }
+
+            updateQueueUI();
+        }
+        function playSong() {
+            isPlaying = true;
+            const playPromise = audioPlayer.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    // Ignore the common "interrupted" error
+                    if (error.name === 'AbortError') {
+                       console.log('Audio play was interrupted.');
+                    } else {
+                       console.error("Play error:", error);
+                    }
+                });
+            }
+            playPauseIcon.classList.replace('fa-play', 'fa-pause');
+            if (isHost) updateSessionState();
+        }
+        function pauseSong() {
+            isPlaying = false;
+            audioPlayer.pause();
+            playPauseIcon.classList.replace('fa-pause', 'fa-play');
+            if (isHost) updateSessionState();
+        }
+        function updateProgress() {
+            const { duration, currentTime } = audioPlayer;
+            const progressPercent = (currentTime / duration) * 100;
+            progressBar.value = isNaN(progressPercent) ? 0 : progressPercent;
+            currentTimeEl.textContent = formatTime(currentTime);
+            if(isHost && sessionId) updateSessionState({ currentTime: currentTime });
+        }
+        function formatTime(seconds) {
+            if (isNaN(seconds)) return "0:00";
+            const minutes = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+        function prevSong() {
+            if (songs.length === 0) return;
+            currentSongIndex = (currentSongIndex - 1 + songs.length) % songs.length;
+            loadSong(songs[currentSongIndex]);
+            playSong();
+            if (isHost) updateSessionState({ currentSongIndex });
+        }
+        function nextSong() {
+            if (songs.length === 0) return;
+            currentSongIndex = (currentSongIndex + 1) % songs.length;
+            loadSong(songs[currentSongIndex]);
+            playSong();
+            if (isHost) updateSessionState({ currentSongIndex });
+        }
+        async function handleFiles(files) {
+            const newSongs = Array.from(files).map(async file => {
+                try {
+                    const tags = await getFileMetadata(file);
+                    return { file, title: tags.title, artist: tags.artist, album: tags.album, picture: tags.picture, genre: tags.genre, year: tags.year };
+                } catch (error) {
+                    return { file, title: file.name.replace(/\.[^/.]+$/, ""), artist: 'Unknown Artist' };
+                }
+            });
+            songs = await Promise.all(newSongs);
+            updateQueueUI();
+            if (songs.length > 0 && audioPlayer.src === '') {
+                 currentSongIndex = 0;
+                 loadSong(songs[currentSongIndex]);
+            }
+        }
+        function getFileMetadata(file) {
+            return new Promise((resolve, reject) => {
+                jsmediatags.read(file, { onSuccess: (tag) => resolve(tag.tags), onError: (error) => reject(error) });
+            });
+        }
+        function updateQueueUI() {
+            queueList.innerHTML = '';
+            songs.forEach((song, index) => {
+                const li = document.createElement('li');
+                li.className = `flex items-center p-2 rounded-md cursor-pointer hover:bg-gray-700/50 ${index === currentSongIndex ? 'bg-indigo-600/30' : ''}`;
+                li.dataset.index = index;
+
+                const queueTitle = song.title || 'Unknown Title';
+                const queueArtist = song.artist || 'Unknown Artist';
+                li.innerHTML = `
+                    <div class="ml-3 overflow-hidden w-full">
+                        <div class="marquee font-semibold text-sm">
+                            <div class="marquee-inner">
+                                <span>${queueTitle}&nbsp;&nbsp;&nbsp;</span>
+                                <span>${queueTitle}&nbsp;&nbsp;&nbsp;</span>
+                            </div>
+                        </div>
+                        <div class="marquee text-xs text-gray-400">
+                            <div class="marquee-inner">
+                                <span>${queueArtist}&nbsp;&nbsp;&nbsp;</span>
+                                <span>${queueArtist}&nbsp;&nbsp;&nbsp;</span>
+                            </div>
+                        </div>
+                    </div>`;
+
+                li.addEventListener('click', () => {
+                    currentSongIndex = index;
+                    loadSong(songs[currentSongIndex]);
+                    playSong();
+                    if(isHost) updateSessionState({currentSongIndex});
+                });
+                queueList.appendChild(li);
+            });
+        }
+
+        function setVolume(level) {
+            const roundedLevel = Math.round(level);
+            audioPlayer.volume = roundedLevel / 100;
+            audioPlayer.muted = roundedLevel === 0;
+            updateVolumeIcon(roundedLevel, roundedLevel === 0);
+            volumePercentage.textContent = `${roundedLevel}%`;
+        }
+
+        function toggleMute() {
+            audioPlayer.muted = !audioPlayer.muted;
+            const newVolume = audioPlayer.muted ? 0 : audioPlayer.volume * 100;
+            volumeSlider.value = newVolume;
+            setVolume(newVolume);
+        }
+
+        function updateVolumeIcon(volume, isMuted) {
+             if (isMuted || volume === 0) {
+                volumeIcon.className = "fas fa-volume-xmark";
+            } else if (volume < 50) {
+                volumeIcon.className = "fas fa-volume-low";
+            } else {
+                volumeIcon.className = "fas fa-volume-high";
+            }
+        }
+
+        // --- Real-time Session Logic ---
+        async function createSession(name, code) {
+            if (!name || !/^\d{6}$/.test(code)) {
+                createError.textContent = "Name and a 6-digit code are required.";
+                return;
+            }
+            createError.textContent = "";
+
+            const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', code);
+            const sessionDoc = await getDoc(sessionRef);
+            if (sessionDoc.exists()) {
+                createError.textContent = "This session code is already in use.";
+                return;
+            }
+
+            isHost = true;
+            sessionId = code;
+            userName = name;
+
+            await updateSessionState({ initial: true }); // Create session doc
+            await addUserToSession(); // Add self to users subcollection
+            
+            attachListeners();
+            updateUIAfterSessionChange();
+            sessionStartModal.classList.add('hidden');
+        }
+        async function joinSession(name, code) {
+            if (!name || !/^\d{6}$/.test(code)) {
+                joinError.textContent = "Name and a 6-digit code are required.";
+                return;
+            }
+            joinError.textContent = "";
+
+            const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', code);
+            const sessionDoc = await getDoc(sessionRef);
+            if (!sessionDoc.exists()) {
+                joinError.textContent = "Session code not found.";
+                return;
+            }
+
+            isHost = false;
+            sessionId = code;
+            userName = name;
+            
+            await addUserToSession();
+            
+            attachListeners();
+            updateUIAfterSessionChange();
+            sessionStartModal.classList.add('hidden');
+        }
+        async function leaveSession() {
+            if (sessionUnsubscribe) sessionUnsubscribe();
+            if (chatUnsubscribe) chatUnsubscribe();
+            if (usersUnsubscribe) usersUnsubscribe();
+            
+            if (sessionId && userId) {
+                 const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionId, 'users', userId);
+                 await deleteDoc(userRef);
+            }
+
+            isHost = false;
+            sessionId = null;
+            userName = null;
+            updateUIAfterSessionChange();
+            userList.innerHTML = '';
+            chatMessages.innerHTML = '';
+        }
+        function updateUIAfterSessionChange() {
+            const inSession = !!sessionId;
+            sessionManageBtn.classList.toggle('hidden', inSession);
+            sessionDisplay.classList.toggle('hidden', !inSession);
+            sessionDisplay.classList.toggle('flex', inSession);
+            chatInput.disabled = !inSession;
+            sendChatBtn.disabled = !inSession;
+            if (inSession) {
+                sessionIdDisplay.textContent = sessionId;
+            }
+        }
+        function attachListeners() {
+            listenToSessionChanges();
+            listenToChatMessages();
+            listenToUsers();
+        }
+        async function addUserToSession() {
+            const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionId, 'users', userId);
+            await setDoc(userRef, { name: userName, joinedAt: serverTimestamp() });
+        }
+        async function updateSessionState(overrides = {}) {
+            if (!isHost || !sessionId) return;
+            const state = {
+                isPlaying,
+                currentSongIndex,
+                currentTime: audioPlayer.currentTime,
+                timestamp: serverTimestamp(),
+                playlist: songs.map(s => ({ title: s.title, artist: s.artist })),
+                ...overrides
+            };
+            const sessionRef = doc(db, "artifacts", appId, 'public', 'data', 'sessions', sessionId);
+            await setDoc(sessionRef, state, { merge: true });
+        }
+        function listenToSessionChanges() {
+            const sessionRef = doc(db, "artifacts", appId, 'public', 'data', 'sessions', sessionId);
+            sessionUnsubscribe = onSnapshot(sessionRef, (doc) => {
+                if (!doc.exists() || isHost) return;
+                const data = doc.data();
+                if (data.currentSongIndex !== currentSongIndex) {
+                    if(songs.length > data.currentSongIndex) {
+                        currentSongIndex = data.currentSongIndex;
+                        loadSong(songs[currentSongIndex]);
+                    } else {
+                        console.warn("Host changed song, but playlist seems out of sync.");
+                    }
+                }
+                if (data.isPlaying && !isPlaying) playSong();
+                else if (!data.isPlaying && isPlaying) pauseSong();
+
+                if (Math.abs(audioPlayer.currentTime - data.currentTime) > 2) {
+                    audioPlayer.currentTime = data.currentTime;
+                }
+            });
+        }
+        function listenToUsers() {
+            const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionId, 'users');
+            const q = query(usersRef, orderBy("joinedAt", "asc"));
+            usersUnsubscribe = onSnapshot(q, (snapshot) => {
+                userList.innerHTML = '';
+                snapshot.forEach(doc => {
+                    const user = doc.data();
+                    const li = document.createElement('li');
+                    li.className = 'flex items-center';
+                    li.innerHTML = `
+                        <i class="fas fa-user-circle text-indigo-400 mr-3 text-2xl"></i>
+                        <div>
+                            <p class="font-semibold text-sm">${user.name} ${doc.id === userId ? '(You)' : ''}</p>
+                            <p class="text-xs text-gray-500">Joined: ${user.joinedAt ? user.joinedAt.toDate().toLocaleTimeString() : 'now'}</p>
+                        </div>
+                    `;
+                    userList.appendChild(li);
+                });
+            });
+        }
+       
+        function listenToChatMessages() {
+            const chatCollectionRef = collection(db, "artifacts", appId, 'public', 'data', 'sessions', sessionId, "chat");
+            const q = query(chatCollectionRef, orderBy("timestamp", "asc"));
+            chatUnsubscribe = onSnapshot(q, (snapshot) => {
+                const wasScrolledToBottom = chatMessages.scrollHeight - chatMessages.clientHeight <= chatMessages.scrollTop + 1;
+                chatMessages.innerHTML = '';
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const messageEl = document.createElement('div');
+                    const isMe = data.userId === userId;
+                    const timeString = data.timestamp ? data.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+
+                    if (isMe) {
+                        messageEl.innerHTML = `
+                        <div class="flex items-end gap-2 justify-end">
+                            <div class="max-w-[85%]">
+                                <div class="text-xs text-gray-500 mb-1 text-right">${data.userName} · ${timeString}</div>
+                                <div class="p-3 rounded-lg bg-indigo-600 text-white rounded-br-none">
+                                    ${data.message}
+                                </div>
+                            </div>
+                        </div>`;
+                    } else {
+                        messageEl.innerHTML = `
+                        <div class="flex items-end gap-2">
+                            <div class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0">
+                                <i class="fas fa-user text-gray-300"></i>
+                            </div>
+                            <div class="max-w-[85%]">
+                                <div class="text-xs text-gray-500 mb-1">${data.userName} · ${timeString}</div>
+                                <div class="p-3 rounded-lg bg-gray-700 rounded-bl-none">
+                                    ${data.message}
+                                </div>
+                            </div>
+                        </div>`;
+                    }
+                    chatMessages.appendChild(messageEl);
+                });
+                if(wasScrolledToBottom) {
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+            });
+        }
+        async function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (message && sessionId && userId && userName) {
+                const chatCollectionRef = collection(db, "artifacts", appId, 'public', 'data', 'sessions', sessionId, "chat");
+                await addDoc(chatCollectionRef, { userId, userName, message, timestamp: serverTimestamp() });
+                chatInput.value = '';
+            }
+        }
+        
+        // --- Event Listeners ---
+        playPauseBtn.addEventListener('click', () => (isPlaying ? pauseSong() : playSong()));
+        nextBtn.addEventListener('click', nextSong);
+        prevBtn.addEventListener('click', prevSong);
+        audioPlayer.addEventListener('timeupdate', updateProgress);
+        audioPlayer.addEventListener('ended', nextSong);
+        audioPlayer.addEventListener('loadedmetadata', () => durationEl.textContent = formatTime(audioPlayer.duration));
+        progressBar.addEventListener('input', (e) => {
+            const newTime = (e.target.value / 100) * audioPlayer.duration;
+            if(!isNaN(newTime)) { audioPlayer.currentTime = newTime; if(isHost) updateSessionState({currentTime: newTime}); }
+        });
+        addSongsInput.addEventListener('change', (e) => handleFiles(e.target.files));
+        rescanBtn.addEventListener('click', () => {
+            songs = [];
+            currentSongIndex = 0;
+            audioPlayer.src = '';
+            albumArt.src = 'https://placehold.co/300x300/1a202c/718096?text=No+Art';
+            const defaultText = "No Song Playing";
+            songTitle.innerHTML = `<span>${defaultText}&nbsp;&nbsp;&nbsp;</span><span>${defaultText}&nbsp;&nbsp;&nbsp;</span>`;
+            const defaultArtist = "Select songs to start";
+            songArtist.innerHTML = `<span>${defaultArtist}&nbsp;&nbsp;&nbsp;</span><span>${defaultArtist}&nbsp;&nbsp;&nbsp;</span>`;
+            metaAlbum.classList.add('hidden');
+            metaGenreYear.classList.add('hidden');
+            updateQueueUI();
+            addSongsInput.click();
+        });
+        volumeSlider.addEventListener('input', (e) => setVolume(e.target.value));
+        volumeBtn.addEventListener('click', toggleMute);
+        
+        // Session Modal Listeners
+        sessionManageBtn.addEventListener('click', () => sessionStartModal.classList.remove('hidden'));
+        closeModalBtn.addEventListener('click', () => {
+            sessionStartModal.classList.add('hidden');
+            initialView.classList.remove('hidden'); createView.classList.add('hidden'); joinView.classList.add('hidden');
+        });
+        showCreateViewBtn.addEventListener('click', () => { initialView.classList.add('hidden'); createView.classList.remove('hidden'); });
+        showJoinViewBtn.addEventListener('click', () => { initialView.classList.add('hidden'); joinView.classList.remove('hidden'); });
+        backBtns.forEach(btn => btn.addEventListener('click', () => {
+            createView.classList.add('hidden'); joinView.classList.add('hidden'); initialView.classList.remove('hidden');
+            createError.textContent = ""; joinError.textContent = "";
+        }));
+        createSessionBtn.addEventListener('click', () => createSession(createNameInput.value, createCodeInput.value));
+        joinSessionBtn.addEventListener('click', () => joinSession(joinNameInput.value, joinCodeInput.value));
+        leaveSessionBtn.addEventListener('click', leaveSession);
+        copySessionIdBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(sessionId).then(() => {
+                const originalIcon = copySessionIdBtn.innerHTML;
+                copySessionIdBtn.innerHTML = '<i class="fas fa-check text-green-500"></i>';
+                setTimeout(() => { copySessionIdBtn.innerHTML = originalIcon; }, 2000);
+            });
+        });
+
+        // Chat listeners
+        sendChatBtn.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendChatMessage(); });
+
+        // Initial Setup
+        setVolume(volumeSlider.value);
+        initializeAuth();
+    </script>
+</body>
+</html>
+
